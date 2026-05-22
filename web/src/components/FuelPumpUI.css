@@ -1,0 +1,280 @@
+.pump-card {
+  width: 900px;
+  height: 580px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.pump-header {
+  height: 80px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.pump-price-badge {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.pump-content {
+  flex-grow: 1;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  padding: 24px;
+  gap: 24px;
+  background: var(--bg-card);
+  overflow-y: auto;
+}
+
+.pump-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.pump-gauge-card {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.pump-gauge-card h3 {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fuel-gauge-fill.projected {
+  stroke: var(--color-primary);
+  opacity: 0.25;
+}
+
+.fuel-gauge-fill.current {
+  stroke: var(--color-primary);
+}
+
+.fuel-gauge-svg,
+.fuel-gauge-text {
+  pointer-events: none;
+}
+
+.vehicle-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.veh-name {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.veh-status {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.pump-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.pump-right-col * {
+  pointer-events: all !important;
+}
+
+.selector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.preset-chip {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 10px 0;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.preset-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.preset-chip.primary {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: transparent;
+}
+
+.preset-chip.primary:hover {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-count-badge {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.pump-slider {
+  margin: 4px 0 !important;
+  background: var(--border-color) !important;
+}
+
+.out-of-limits-warning {
+  background: var(--color-danger-bg);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: var(--color-danger);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.invoice-box {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.invoice-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.invoice-row span:last-child {
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.invoice-price {
+  color: var(--color-success) !important;
+  font-size: 1.1rem;
+  font-weight: 700 !important;
+}
+
+.wallet-row {
+  border-top: 1px dashed var(--border-color);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.pump-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pulse-effect {
+  position: relative;
+}
+
+.pulse-effect::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 0 var(--color-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pulse-effect:not(:disabled)::after {
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse-border {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-primary);
+    opacity: 0.5;
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px var(--color-primary);
+    opacity: 0;
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 var(--color-primary);
+    opacity: 0;
+  }
+}

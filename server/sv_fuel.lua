@@ -1,0 +1,403 @@
+local Settings = lib.load('shared.settings')
+
+if not Settings then return end
+
+lib.versionCheck('LumaNodeStudios/LNS_Fuel') 
+
+local function reportSecurityCheck(src, message)
+    print(message)
+    if Settings.exploitdrop then
+        DropPlayer(src, "Security violation detected (LNS_Fuel)")
+    end
+end
+
+local function validateNumber(val)
+    local num = tonumber(val)
+    if not num or num ~= num or num == math.huge or num == -math.huge then
+        return nil
+    end
+    return num
+end
+
+local function validateInteger(val)
+    local num = validateNumber(val)
+    if not num then return nil end
+    return math.floor(num)
+end
+
+local function GetStationId(coords)
+    return string.format("station_%.2f_%.2f", coords.x, coords.y)
+end
+
+local function GetStationIndex(stationId)
+    if type(stationId) ~= "string" then return nil end
+    for i = 1, #Settings.Stations do
+        if GetStationId(Settings.Stations[i].blip) == stationId then
+            return i
+        end
+    end
+    return nil
+end
+
+local function applyFuelLevel(networkId, fuelLevel)
+    local veh = NetworkGetEntityFromNetworkId(networkId)
+
+    if veh == 0 or GetEntityType(veh) ~= 2 then return end
+
+    local vehState = Entity(veh)?.state
+    local clampedFuel = math.clamp(fuelLevel, 0, 100)
+
+    vehState:set('fuel', clampedFuel, true)
+end
+
+local function isNearAnyPump(playerCoords, maxDistance)
+    maxDistance = maxDistance or 15.0
+    if not Settings or not Settings.Stations then return false end
+    for i = 1, #Settings.Stations do
+        local station = Settings.Stations[i]
+        for _, pump in ipairs(station.pumps) do
+            if #(playerCoords - pump) < maxDistance then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function handleDefaultPayment(plyId, cost)
+    local isSuccess = exports.ox_inventory:RemoveItem(plyId, 'money', cost)
+
+    if isSuccess then 
+        return true 
+    end
+
+    local currentBal = exports.ox_inventory:GetItemCount(plyId, 'money')
+
+    TriggerClientEvent('ox_lib:notify', plyId, {
+        type = 'error',
+        description = locale('not_enough_money', cost - currentBal)
+    })
+end
+
+local processPayment = handleDefaultPayment
+
+exports('setPaymentMethod', function(customFunc)
+    processPayment = customFunc or handleDefaultPayment
+end)
+
+RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, litersFueled)
+    local src = source
+
+    local validatedCost = validateNumber(cost)
+    local validatedCurrentFuel = validateNumber(currentFuel)
+    local validatedNId = validateInteger(nId)
+    local validatedLiters = validateNumber(litersFueled)
+
+    if not validatedCost or not validatedCurrentFuel or not validatedNId or not validatedLiters then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent invalid/NaN/inf pay parameters! Cost: %s, Fuel: %s, NetId: %s, Liters: %s"):format(
+            src, tostring(cost), tostring(currentFuel), tostring(nId), tostring(litersFueled)
+        ))
+        return
+    end
+
+    if stationId ~= nil then
+        if type(stationId) ~= "string" then
+            reportSecurityCheck(src, ("[Security Check] Player %s sent invalid type for stationId: %s"):format(src, type(stationId)))
+            return
+        end
+        if not GetStationIndex(stationId) then
+            reportSecurityCheck(src, ("[Security Check] Player %s sent unregistered stationId: %s"):format(src, stationId))
+            return
+        end
+    end
+
+    cost = validatedCost
+    litersFueled = validatedLiters
+    currentFuel = validatedCurrentFuel
+
+    if cost < 0 or litersFueled < 0 or currentFuel < 0 or currentFuel > 100 then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent invalid/out-of-bounds pay parameters! Cost: %s, Liters: %s, Fuel: %s"):format(src, cost, litersFueled, currentFuel))
+        return
+    end
+
+    local vehicle = NetworkGetEntityFromNetworkId(validatedNId)
+    if vehicle == 0 or not DoesEntityExist(vehicle) then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:pay with invalid vehicle NetId!"):format(src))
+        return
+    end
+
+    local playerPed = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(playerPed)
+    local vehCoords = GetEntityCoords(vehicle)
+    local distanceToVeh = #(playerCoords - vehCoords)
+
+    if distanceToVeh > 15.0 then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:pay too far from vehicle! Distance: %0.2f meters"):format(src, distanceToVeh))
+        return
+    end
+
+    if not isNearAnyPump(playerCoords, 15.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:pay too far from any gas pump!"):format(src))
+        return
+    end
+
+    local vehState = Entity(vehicle)?.state
+    local currentServerFuel = (vehState and vehState.fuel) or 0
+    local fuelDelta = currentFuel - currentServerFuel
+    if fuelDelta > 0 then
+        if litersFueled < fuelDelta - 2.0 then
+            reportSecurityCheck(src, ("[Security Check] Player %s attempted free refuel! Liters Fueled: %s, Actual Fuel Delta: %0.2f (Server: %0.2f, Client Target: %s)"):format(
+                src, litersFueled, fuelDelta, currentServerFuel, currentFuel
+            ))
+            return
+        end
+    end
+
+    local expectedPrice = Settings.priceTick / Settings.refillValue
+    if stationId and ownedStations and ownedStations[stationId] then
+        expectedPrice = ownedStations[stationId].price
+    end
+
+    local expectedCost = math.ceil(litersFueled * expectedPrice)
+    if cost < expectedCost - 2 then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:pay with manipulated cost! Cost: %s, Expected: %s, Liters: %s"):format(src, cost, expectedCost, litersFueled))
+        return
+    end
+    
+    if stationId and ownedStations and ownedStations[stationId] then
+        local station = ownedStations[stationId]
+        local fuelToDeduct = math.ceil(litersFueled or 0)
+        
+        if station.stock < fuelToDeduct then
+            fuelToDeduct = station.stock
+        end
+
+        if fuelToDeduct <= 0 and litersFueled and litersFueled > 0 then
+            return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_station_out_of_fuel') })
+        end
+
+        if not processPayment(src, cost) then return end
+
+        station.stock = math.max(0, station.stock - fuelToDeduct)
+        station.balance = station.balance + cost
+        station.statistics.totalSales = (station.statistics.totalSales or 0) + fuelToDeduct
+        station.statistics.totalRevenue = (station.statistics.totalRevenue or 0) + cost
+        station.statistics.lifetimeClients = (station.statistics.lifetimeClients or 0) + 1
+
+        MySQL.query.await([[
+            UPDATE lns_fuel_stations 
+            SET stock = ?, balance = ?, statistics = ?
+            WHERE station_id = ?
+        ]], { station.stock, station.balance, json.encode(station.statistics), stationId })
+
+        TriggerClientEvent('LNS_Fuel:syncStation', -1, stationId, station)
+
+        currentFuel = math.floor(currentFuel)
+        applyFuelLevel(validatedNId, currentFuel)
+
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'success',
+            description = locale('fuel_success', currentFuel, cost)
+        })
+        return
+    end
+
+    if not processPayment(src, cost) then return end
+
+    currentFuel = math.floor(currentFuel)
+    applyFuelLevel(validatedNId, currentFuel)
+
+    TriggerClientEvent('ox_lib:notify', src, {
+        type = 'success',
+        description = locale('fuel_success', currentFuel, cost)
+    })
+end)
+
+RegisterNetEvent('LNS_Fuel:fuelCan', function(ownsCan, cost, stationId)
+    local src = source
+
+    if type(ownsCan) ~= "boolean" then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent invalid type for ownsCan: %s"):format(src, type(ownsCan)))
+        return
+    end
+
+    local validatedCost = validateNumber(cost)
+    if not validatedCost then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent invalid/NaN/inf Jerry Can price: %s"):format(src, tostring(cost)))
+        return
+    end
+    cost = validatedCost
+
+    if cost < 0 then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent negative Jerry Can price: %s"):format(src, cost))
+        return
+    end
+
+    if stationId ~= nil then
+        if type(stationId) ~= "string" then
+            reportSecurityCheck(src, ("[Security Check] Player %s sent invalid type for stationId: %s"):format(src, type(stationId)))
+            return
+        end
+        if not GetStationIndex(stationId) then
+            reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:fuelCan with unregistered stationId: %s"):format(src, stationId))
+            return
+        end
+    end
+
+    local playerPed = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(playerPed)
+    if not isNearAnyPump(playerCoords, 15.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:fuelCan too far from any gas pump!"):format(src))
+        return
+    end
+
+    local expectedCost = Settings.petrolCan.price
+    if ownsCan then
+        expectedCost = Settings.petrolCan.refillPrice
+    end
+
+    if cost < expectedCost then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted Jerry Can refill/purchase with manipulated cost! Cost: %s, Expected: %s"):format(src, cost, expectedCost))
+        return
+    end
+    
+    if ownsCan then
+        local wpnItem = exports.ox_inventory:GetCurrentWeapon(src)
+
+        if not wpnItem or wpnItem.name ~= 'WEAPON_PETROLCAN' or not processPayment(src, cost) then 
+            return 
+        end
+
+        if stationId and ownedStations and ownedStations[stationId] then
+            local station = ownedStations[stationId]
+            station.balance = station.balance + cost
+            MySQL.query.await("UPDATE lns_fuel_stations SET balance = ? WHERE station_id = ?", { station.balance, stationId })
+            TriggerClientEvent('LNS_Fuel:syncStation', -1, stationId, station)
+        end
+
+        wpnItem.metadata.durability = 100
+        wpnItem.metadata.ammo = 100
+
+        exports.ox_inventory:SetMetadata(src, wpnItem.slot, wpnItem.metadata)
+
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'success',
+            description = locale('petrolcan_refill', cost)
+        })
+    else
+        local canCarry = exports.ox_inventory:CanCarryItem(src, 'WEAPON_PETROLCAN', 1)
+        if not canCarry then
+            TriggerClientEvent('ox_lib:notify', src, {
+                type = 'error',
+                description = locale('petrolcan_cannot_carry')
+            })
+            return
+        end
+
+        if not processPayment(src, cost) then return end
+
+        if stationId and ownedStations and ownedStations[stationId] then
+            local station = ownedStations[stationId]
+            station.balance = station.balance + cost
+            MySQL.query.await("UPDATE lns_fuel_stations SET balance = ? WHERE station_id = ?", { station.balance, stationId })
+            TriggerClientEvent('LNS_Fuel:syncStation', -1, stationId, station)
+        end
+
+        exports.ox_inventory:AddItem(src, 'WEAPON_PETROLCAN', 1)
+
+        TriggerClientEvent('ox_lib:notify', src, {
+            type = 'success',
+            description = locale('petrolcan_buy', cost)
+        })
+    end
+end)
+
+RegisterNetEvent('LNS_Fuel:updateFuelCan', function(dura, nId, currentFuel)
+    local src = source
+
+    local validatedDura = validateNumber(dura)
+    local validatedNId = validateInteger(nId)
+    local validatedCurrentFuel = validateNumber(currentFuel)
+
+    if not validatedDura or not validatedNId or not validatedCurrentFuel then
+        reportSecurityCheck(src, ("[Security Check] Player %s sent invalid/NaN/inf updateFuelCan parameters! Dura: %s, NetId: %s, Fuel: %s"):format(
+            src, tostring(dura), tostring(nId), tostring(currentFuel)
+        ))
+        return
+    end
+
+    dura = validatedDura
+    currentFuel = validatedCurrentFuel
+
+    if dura <= 0 or currentFuel < 0 or currentFuel > 100 then
+        return
+    end
+
+    local vehicle = NetworkGetEntityFromNetworkId(validatedNId)
+    if vehicle == 0 or not DoesEntityExist(vehicle) then 
+        return 
+    end
+
+    local playerPed = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(playerPed)
+    local vehCoords = GetEntityCoords(vehicle)
+    local distanceToVeh = #(playerCoords - vehCoords)
+
+    if distanceToVeh > 15.0 then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:updateFuelCan too far from vehicle! Distance: %0.2f meters"):format(src, distanceToVeh))
+        return
+    end
+
+    local wpnItem = exports.ox_inventory:GetCurrentWeapon(src)
+    if not wpnItem or wpnItem.name ~= 'WEAPON_PETROLCAN' then
+        reportSecurityCheck(src, ("[Security Check] Player %s triggered LNS_Fuel:updateFuelCan without a Petrol Can equipped!"):format(src))
+        return
+    end
+
+    local vehState = Entity(vehicle)?.state
+    local currentServerFuel = (vehState and vehState.fuel) or 0
+    local fuelAdded = currentFuel - currentServerFuel
+
+    if fuelAdded > 0 then
+        local expectedDura = (fuelAdded / Settings.refillValue) * Settings.durabilityTick
+        local minAllowedDura = (expectedDura * 0.9) - 1.0
+        if dura < minAllowedDura then
+            reportSecurityCheck(src, ("[Security Check] Player %s attempted LNS_Fuel:updateFuelCan with manipulated durability! Dura: %s, Expected Min: %0.2f, Fuel Added: %0.2f"):format(src, dura, minAllowedDura, fuelAdded))
+            return
+        end
+    end
+
+    local newDura = math.floor(wpnItem.metadata.durability - dura)
+    if newDura < 0 then newDura = 0 end
+    wpnItem.metadata.durability = newDura
+    wpnItem.metadata.ammo = newDura
+
+    exports.ox_inventory:SetMetadata(src, wpnItem.slot, wpnItem.metadata)
+    applyFuelLevel(validatedNId, currentFuel)
+end)
+
+lib.addCommand('setfuel', {
+    help = 'Set/lower the fuel level of the vehicle you are currently in',
+    params = {
+        { name = 'amount', type = 'number', help = 'Fuel level percentage (0-100)' }
+    },
+    restricted = 'group.admin'
+}, function(source, args, raw)
+    local ped = GetPlayerPed(source)
+    local veh = GetVehiclePedIsIn(ped, false)
+    if veh == 0 then
+        return TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = locale('must_be_inside_vehicle')
+        })
+    end
+
+    local amount = math.clamp(args.amount or 0, 0, 100)
+    
+    TriggerClientEvent('LNS_Fuel:setFuel', source, amount)
+
+    TriggerClientEvent('ox_lib:notify', source, {
+        type = 'success',
+        description = ('Vehicle fuel level set to %s%%'):format(amount)
+    })
+end)
