@@ -2,8 +2,6 @@ local Settings = lib.load('shared.settings')
 
 if not Settings then return end
 
-lib.versionCheck('LumaNodeStudios/LNS_Fuel') 
-
 local function reportSecurityCheck(src, message)
     print(message)
     lib.logger(src, 'Security Check', message)
