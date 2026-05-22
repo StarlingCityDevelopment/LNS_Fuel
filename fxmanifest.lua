@@ -4,7 +4,6 @@ lua54 'yes'
 
 author 'LumaNode Studios'
 description 'LumaNode Studios Fuel Management System'
-repository 'https://github.com/LumaNodeStudios/LNS_Fuel'
 version '1.0.0'
 
 ui_page 'web/dist/index.html'
