@@ -182,6 +182,5 @@ end)
 ---
 
 <div align="center">
-  <p><i>A premium product developed by <a href="https://github.com/LumaNodeStudios">LumaNode Studios</a></i></p>
-  <sub>© 2026 LumaNode Studios. All rights reserved.</sub>
+  <p><i>A premium resource developed by <a href="https://github.com/LumaNodeStudios">LumaNode Studios</a></i></p>
 </div>
