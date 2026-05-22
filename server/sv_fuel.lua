@@ -6,6 +6,7 @@ lib.versionCheck('LumaNodeStudios/LNS_Fuel')
 
 local function reportSecurityCheck(src, message)
     print(message)
+    lib.logger(src, 'Security Check', message)
     if Settings.exploitdrop then
         DropPlayer(src, "Security violation detected (LNS_Fuel)")
     end
@@ -195,6 +196,8 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
         currentFuel = math.floor(currentFuel)
         applyFuelLevel(validatedNId, currentFuel)
 
+        lib.logger(src, 'Fuel Purchase', ('Fueled vehicle (netId: %d) with %0.2f liters for $%d at owned station %s. New fuel level: %d%%'):format(validatedNId, litersFueled, cost, stationId, currentFuel), ('stationId:%s'):format(stationId), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
+
         TriggerClientEvent('ox_lib:notify', src, {
             type = 'success',
             description = locale('fuel_success', currentFuel, cost)
@@ -206,6 +209,8 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
 
     currentFuel = math.floor(currentFuel)
     applyFuelLevel(validatedNId, currentFuel)
+
+    lib.logger(src, 'Fuel Purchase', ('Fueled vehicle (netId: %d) with %0.2f liters for $%d at standard station. New fuel level: %d%%'):format(validatedNId, litersFueled, cost, currentFuel), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
 
     TriggerClientEvent('ox_lib:notify', src, {
         type = 'success',
@@ -280,6 +285,8 @@ RegisterNetEvent('LNS_Fuel:fuelCan', function(ownsCan, cost, stationId)
 
         exports.ox_inventory:SetMetadata(src, wpnItem.slot, wpnItem.metadata)
 
+        lib.logger(src, 'Jerry Can Transaction', ('Refilled Petrol Can for $%d at station %s'):format(cost, stationId or 'standard'), stationId and ('stationId:%s'):format(stationId) or nil, ('cost:$%d'):format(cost))
+
         TriggerClientEvent('ox_lib:notify', src, {
             type = 'success',
             description = locale('petrolcan_refill', cost)
@@ -304,6 +311,8 @@ RegisterNetEvent('LNS_Fuel:fuelCan', function(ownsCan, cost, stationId)
         end
 
         exports.ox_inventory:AddItem(src, 'WEAPON_PETROLCAN', 1)
+
+        lib.logger(src, 'Jerry Can Transaction', ('Purchased new Petrol Can for $%d at station %s'):format(cost, stationId or 'standard'), stationId and ('stationId:%s'):format(stationId) or nil, ('cost:$%d'):format(cost))
 
         TriggerClientEvent('ox_lib:notify', src, {
             type = 'success',
@@ -374,6 +383,8 @@ RegisterNetEvent('LNS_Fuel:updateFuelCan', function(dura, nId, currentFuel)
 
     exports.ox_inventory:SetMetadata(src, wpnItem.slot, wpnItem.metadata)
     applyFuelLevel(validatedNId, currentFuel)
+
+    lib.logger(src, 'Jerry Can Refuel', ('Refueled vehicle (netId: %d) using Jerry Can. New fuel level: %d%%'):format(validatedNId, currentFuel), ('netId:%d'):format(validatedNId), ('newFuel:%d'):format(currentFuel))
 end)
 
 lib.addCommand('setfuel', {
@@ -395,6 +406,8 @@ lib.addCommand('setfuel', {
     local amount = math.clamp(args.amount or 0, 0, 100)
     
     TriggerClientEvent('LNS_Fuel:setFuel', source, amount)
+
+    lib.logger(source, 'Set Fuel Admin Command', ('Admin set vehicle fuel level to %d%%'):format(amount), ('newFuel:%d'):format(amount))
 
     TriggerClientEvent('ox_lib:notify', source, {
         type = 'success',

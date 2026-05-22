@@ -5,6 +5,7 @@ local activeDeliveries = {}
 
 local function reportSecurityCheck(src, message)
     print(message)
+    lib.logger(src, 'Security Check', message)
     if Settings and Settings.exploitdrop then
         DropPlayer(src, "Security violation detected (LNS_Fuel)")
     end
@@ -267,6 +268,8 @@ lib.callback.register('LNS_Fuel:buyStation', function(source, stationId)
     ownedStations[stationId] = newStation
     syncStation(stationId)
 
+    lib.logger(source, 'Station Purchased', ('Purchased fuel station %s for $%d'):format(stationId, cost), ('stationId:%s'):format(stationId), ('cost:$%d'):format(cost))
+
     return true, locale('notify_purchase_success')
 end)
 
@@ -319,6 +322,8 @@ RegisterNetEvent('LNS_Fuel:renameStation', function(stationId, newName)
     saveStation(stationId)
     syncStation(stationId)
 
+    lib.logger(src, 'Station Renamed', ('Renamed station %s to "%s"'):format(stationId, newName), ('stationId:%s'):format(stationId), ('name:%s'):format(newName))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_station_renamed') })
 end)
 
@@ -340,6 +345,9 @@ RegisterNetEvent('LNS_Fuel:withdrawMoney', function(stationId, amount)
     syncStation(stationId)
 
     exports.ox_inventory:AddItem(src, 'money', validatedAmount)
+
+    lib.logger(src, 'Station Withdraw', ('Withdrew $%d from station %s balance'):format(validatedAmount, stationId), ('stationId:%s'):format(stationId), ('amount:$%d'):format(validatedAmount))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_withdraw_success'):format(validatedAmount) })
 end)
 
@@ -364,6 +372,8 @@ RegisterNetEvent('LNS_Fuel:depositMoney', function(stationId, amount)
     saveStation(stationId)
     syncStation(stationId)
 
+    lib.logger(src, 'Station Deposit', ('Deposited $%d into station %s balance'):format(validatedAmount, stationId), ('stationId:%s'):format(stationId), ('amount:$%d'):format(validatedAmount))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_deposit_success'):format(validatedAmount) })
 end)
 
@@ -385,6 +395,8 @@ RegisterNetEvent('LNS_Fuel:setPrice', function(stationId, price)
     ownedStations[stationId].price = validatedPrice
     saveStation(stationId)
     syncStation(stationId)
+
+    lib.logger(src, 'Station Price Change', ('Set fuel price to $%d at station %s'):format(validatedPrice, stationId), ('stationId:%s'):format(stationId), ('price:$%d'):format(validatedPrice))
 
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_price_set_success'):format(validatedPrice) })
 end)
@@ -488,6 +500,8 @@ RegisterNetEvent('LNS_Fuel:orderStock', function(stationId, orderIndex, isAuto)
         saveStation(stationId)
         syncStation(stationId)
 
+        lib.logger(src, 'Station Stock Ordered', ('Dispatched AI driver to deliver %d stock for station %s (cost: $%d)'):format(orderData.amount, stationId, totalCost), ('stationId:%s'):format(stationId), ('amount:%d'):format(orderData.amount), ('cost:$%d'):format(totalCost), ('isAuto:true'))
+
         TriggerClientEvent('ox_lib:notify', src, { type = 'info', description = locale('notify_ai_delivery_dispatched') })
 
         SetTimeout(duration * 1000, function()
@@ -507,6 +521,8 @@ RegisterNetEvent('LNS_Fuel:orderStock', function(stationId, orderIndex, isAuto)
 
                     saveStation(stationId)
                     syncStation(stationId)
+
+                    lib.logger(currentDelivery.source, 'Station Delivery Completed', ('AI driver completed delivery of %d stock for station %s'):format(finalAmount, stationId), ('stationId:%s'):format(stationId), ('amount:%d'):format(finalAmount), ('isAuto:true'))
 
                     if GetPlayerPing(currentDelivery.source) > 0 then
                         TriggerClientEvent('ox_lib:notify', currentDelivery.source, { type = 'success', description = locale('notify_ai_delivery_completed'):format(finalAmount) })
@@ -528,6 +544,8 @@ RegisterNetEvent('LNS_Fuel:orderStock', function(stationId, orderIndex, isAuto)
 
         saveStation(stationId)
         syncStation(stationId)
+
+        lib.logger(src, 'Station Stock Ordered', ('Player started manual delivery run of %d stock for station %s (cost: $%d)'):format(orderData.amount, stationId, totalCost), ('stationId:%s'):format(stationId), ('amount:%d'):format(orderData.amount), ('cost:$%d'):format(totalCost), ('isAuto:false'))
 
         TriggerClientEvent('LNS_Fuel:startDelivery', src, stationId, orderData.amount, stationCoords)
         TriggerClientEvent('ox_lib:notify', src, { type = 'info', description = locale('notify_delivery_ordered') })
@@ -597,6 +615,8 @@ RegisterNetEvent('LNS_Fuel:completeDelivery', function(stationId)
         station.activeDelivery = nil
         saveStation(stationId)
         syncStation(stationId)
+
+        lib.logger(src, 'Station Delivery Completed', ('Completed manual delivery run of %d stock for station %s'):format(finalAmount, stationId), ('stationId:%s'):format(stationId), ('amount:%d'):format(finalAmount), ('isAuto:false'))
 
         TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_delivery_completed'):format(finalAmount) })
     end
@@ -672,6 +692,8 @@ RegisterNetEvent('LNS_Fuel:buyUpgrade', function(stationId, upgradeType)
     saveStation(stationId)
     syncStation(stationId)
 
+    lib.logger(src, 'Station Upgrade Purchased', ('Purchased station upgrade %s to level %d for $%d'):format(upgradeType, nextLevel, levelData.price), ('stationId:%s'):format(stationId), ('upgradeType:%s'):format(upgradeType), ('level:%d'):format(nextLevel), ('cost:$%d'):format(levelData.price))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_upgrade_success'):format(upgradeConf.title, nextLevel) })
 end)
 
@@ -706,6 +728,9 @@ RegisterNetEvent('LNS_Fuel:sellStation', function(stationId)
     TriggerClientEvent('LNS_Fuel:syncStation', -1, stationId, nil)
 
     exports.ox_inventory:AddItem(src, 'money', totalRefund)
+
+    lib.logger(src, 'Station Sold', ('Sold station %s for a total refund of $%d'):format(stationId, totalRefund), ('stationId:%s'):format(stationId), ('refund:$%d'):format(totalRefund))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_station_sold'):format(totalRefund) })
 end)
 
@@ -907,6 +932,9 @@ RegisterNetEvent('LNS_Fuel:hireEmployee', function(stationId, targetServerId)
     ]], {stationId, targetId, targetName})
 
     syncStation(stationId)
+
+    lib.logger(src, 'Station Employee Hired', ('Hired employee %s (identifier: %s) for station %s'):format(targetName, targetId, stationId), ('stationId:%s'):format(stationId), ('employeeName:%s'):format(targetName), ('employeeIdentifier:%s'):format(targetId))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_employee_hired'):format(targetName) })
     TriggerClientEvent('ox_lib:notify', validatedTarget, { type = 'info', description = locale('notify_hired_by_station'):format(station.name) })
 end)
@@ -938,6 +966,9 @@ RegisterNetEvent('LNS_Fuel:fireEmployee', function(stationId, employeeIdentifier
     MySQL.query.await("DELETE FROM lns_fuel_employees WHERE station_id = ? AND identifier = ?", {stationId, employeeIdentifier})
 
     syncStation(stationId)
+
+    lib.logger(src, 'Station Employee Fired', ('Fired employee %s (identifier: %s) from station %s'):format(employeeName, employeeIdentifier, stationId), ('stationId:%s'):format(stationId), ('employeeName:%s'):format(employeeName), ('employeeIdentifier:%s'):format(employeeIdentifier))
+
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_employee_fired'):format(employeeName) })
     
     if GetResourceState('qbx_core') == 'started' then
