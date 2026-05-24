@@ -1,12 +1,12 @@
 local Settings = lib.load('shared.settings')
 local clientHelpers = {}
 
-function clientHelpers.createBlip(pos, name)
+function clientHelpers.createBlip(pos, name, sprite, color)
     local newBlip = AddBlipForCoord(pos.x, pos.y, pos.z)
-    SetBlipSprite(newBlip, 361)
+    SetBlipSprite(newBlip, sprite or 361)
     SetBlipDisplay(newBlip, 4)
     SetBlipScale(newBlip, 0.8)
-    SetBlipColour(newBlip, 6)
+    SetBlipColour(newBlip, color or 6)
     SetBlipAsShortRange(newBlip, true)
     
     BeginTextCommandSetBlipName("STRING")

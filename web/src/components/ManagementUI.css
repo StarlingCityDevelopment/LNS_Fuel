@@ -287,6 +287,7 @@
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 16px;
+  align-items: start;
 }
 
 .panel-card {
@@ -433,6 +434,28 @@
   cursor: not-allowed;
   background: #262626;
   color: #5a5a5a;
+}
+
+.deploy-charger-btn {
+  background: var(--color-primary) !important;
+  color: var(--color-primary-text) !important;
+  transition: all 0.2s ease !important;
+}
+
+.deploy-charger-btn:hover:not(:disabled) {
+  background: var(--color-primary-dark) !important;
+}
+
+.dismantle-btn {
+  background: var(--color-danger, #ef4444) !important;
+  color: #fff !important;
+  padding: 6px 12px !important;
+  font-size: 0.8rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.dismantle-btn:hover:not(:disabled) {
+  background: #ff5555 !important;
 }
 
 .pricing-container {

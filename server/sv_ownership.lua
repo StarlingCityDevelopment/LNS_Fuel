@@ -39,6 +39,20 @@ local function GetStationIndex(stationId)
     return nil
 end
 
+local function isNearStationManagement(source, stationId, maxDistance)
+    maxDistance = maxDistance or 20.0
+    if type(stationId) ~= "string" then return false end
+    local idx = GetStationIndex(stationId)
+    if not idx then return false end
+    local stationConf = Settings.Stations[idx]
+    if not stationConf then return false end
+    local center = stationConf.management or stationConf.blip
+    local playerPed = GetPlayerPed(source)
+    if not playerPed or playerPed == 0 then return false end
+    local playerCoords = GetEntityCoords(playerPed)
+    return #(playerCoords - center) <= maxDistance
+end
+
 local function getPlayerIdentifier(source)
     if GetResourceState('qbx_core') == 'started' then
         local Player = exports.qbx_core:GetPlayer(source)
@@ -90,6 +104,14 @@ MySQL.ready(function()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ]])
 
+    pcall(function()
+        MySQL.query.await("ALTER TABLE `lns_fuel_stations` ADD COLUMN `electric_price` INT NOT NULL DEFAULT 2")
+    end)
+
+    pcall(function()
+        MySQL.query.await("ALTER TABLE `lns_fuel_stations` ADD COLUMN `electric_chargers` TEXT DEFAULT '[]'")
+    end)
+
     MySQL.query.await([[
         CREATE TABLE IF NOT EXISTS `lns_fuel_employees` (
             `id` INT AUTO_INCREMENT PRIMARY KEY,
@@ -104,7 +126,7 @@ MySQL.ready(function()
     local results = MySQL.query.await("SELECT * FROM lns_fuel_stations")
     if results then
         for _, row in ipairs(results) do
-            local upgrades = { capacity = 0, shippingDiscount = 0, hiredDriver = 0 }
+            local upgrades = { capacity = 0, shippingDiscount = 0, hiredDriver = 0, chargerLimit = 0 }
             local stats = { totalSales = 0, totalRevenue = 0, lifetimeClients = 0 }
             
             if row.upgrades and row.upgrades ~= "" then
@@ -112,6 +134,11 @@ MySQL.ready(function()
             end
             if row.statistics and row.statistics ~= "" then
                 pcall(function() stats = json.decode(row.statistics) or stats end)
+            end
+
+            local electric_chargers = {}
+            if row.electric_chargers and row.electric_chargers ~= "" then
+                pcall(function() electric_chargers = json.decode(row.electric_chargers) or electric_chargers end)
             end
 
             local emps = {}
@@ -127,6 +154,9 @@ MySQL.ready(function()
             end
 
             local idx = GetStationIndex(row.station_id)
+            local hasElectric = true
+            local electricPumpsCount = #electric_chargers
+
             ownedStations[row.station_id] = {
                 id = row.station_id,
                 prettyId = idx and ("#" .. idx) or row.station_id,
@@ -136,6 +166,10 @@ MySQL.ready(function()
                 stock = row.stock,
                 capacity = row.capacity,
                 price = row.price,
+                electricPrice = row.electric_price or Settings.ownership.defaultElectricPrice or 2,
+                hasElectric = hasElectric,
+                electricPumpsCount = electricPumpsCount,
+                electric_chargers = electric_chargers,
                 upgrades = upgrades,
                 statistics = stats,
                 employees = emps
@@ -166,7 +200,7 @@ local function saveStation(stationId)
     
     MySQL.query.await([[
         UPDATE lns_fuel_stations 
-        SET name = ?, balance = ?, stock = ?, capacity = ?, price = ?, upgrades = ?, statistics = ?
+        SET name = ?, balance = ?, stock = ?, capacity = ?, price = ?, electric_price = ?, upgrades = ?, statistics = ?, electric_chargers = ?
         WHERE station_id = ?
     ]], {
         station.name,
@@ -174,8 +208,10 @@ local function saveStation(stationId)
         station.stock,
         station.capacity,
         station.price,
+        station.electricPrice or Settings.ownership.defaultElectricPrice or 2,
         json.encode(station.upgrades),
         json.encode(station.statistics),
+        json.encode(station.electric_chargers or {}),
         stationId
     })
 end
@@ -192,6 +228,17 @@ lib.callback.register('LNS_Fuel:buyStation', function(source, stationId)
     if not idx then
         reportSecurityCheck(source, ("[Security Check] Player %s attempted to buy invalid stationId %s"):format(source, stationId))
         return false, locale('notify_failed_load_station')
+    end
+
+    local stationConf = Settings.Stations[idx]
+    if stationConf and stationConf.cantBeOwned then
+        reportSecurityCheck(source, ("[Security Check] Player %s attempted to buy non-ownable stationId %s"):format(source, stationId))
+        return false, "This station cannot be owned."
+    end
+
+    if not isNearStationManagement(source, stationId, 20.0) then
+        reportSecurityCheck(source, ("[Security Check] Player %s attempted to buy stationId %s too far away!"):format(source, stationId))
+        return false, "You are too far from the station management point."
     end
 
     if ownedStations[stationId] then
@@ -245,14 +292,18 @@ lib.callback.register('LNS_Fuel:buyStation', function(source, stationId)
         stock = Settings.ownership.defaultCapacity,
         capacity = Settings.ownership.defaultCapacity,
         price = Settings.priceTick,
-        upgrades = { capacity = 0, shippingDiscount = 0, hiredDriver = 0 },
+        electricPrice = Settings.ownership.defaultElectricPrice or 2,
+        hasElectric = true,
+        electricPumpsCount = 0,
+        electric_chargers = {},
+        upgrades = { capacity = 0, shippingDiscount = 0, hiredDriver = 0, chargerLimit = 0 },
         statistics = { totalSales = 0, totalRevenue = 0, lifetimeClients = 0 },
         employees = {}
     }
 
     MySQL.query.await([[
-        INSERT INTO lns_fuel_stations (station_id, owner, name, balance, stock, capacity, price, upgrades, statistics) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO lns_fuel_stations (station_id, owner, name, balance, stock, capacity, price, electric_price, upgrades, statistics, electric_chargers) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ]], {
         newStation.id,
         newStation.owner,
@@ -261,8 +312,10 @@ lib.callback.register('LNS_Fuel:buyStation', function(source, stationId)
         newStation.stock,
         newStation.capacity,
         newStation.price,
+        newStation.electricPrice,
         json.encode(newStation.upgrades),
-        json.encode(newStation.statistics)
+        json.encode(newStation.statistics),
+        json.encode(newStation.electric_chargers)
     })
 
     ownedStations[stationId] = newStation
@@ -278,6 +331,11 @@ lib.callback.register('LNS_Fuel:getStationManagement', function(source, stationI
     local plyId = getPlayerIdentifier(source)
     local station = ownedStations[stationId]
     if not station or station.pending then return nil end
+
+    if not isNearStationManagement(source, stationId, 20.0) then
+        reportSecurityCheck(source, ("[Security Check] Player %s attempted to access station management for %s too far away!"):format(source, stationId))
+        return nil
+    end
 
     local isOwner = (station.owner == plyId)
     local isEmp = false
@@ -306,6 +364,10 @@ RegisterNetEvent('LNS_Fuel:renameStation', function(stationId, newName)
         return
     end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to rename station %s too far away!"):format(src, stationId))
+        return
+    end
 
     if #newName < 3 or #newName > 30 then
         return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_name_length') })
@@ -331,6 +393,10 @@ RegisterNetEvent('LNS_Fuel:withdrawMoney', function(stationId, amount)
     local src = source
     if type(stationId) ~= "string" then return end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to withdraw money from station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local validatedAmount = validateInteger(amount)
     if not validatedAmount or validatedAmount <= 0 then return end
@@ -355,6 +421,10 @@ RegisterNetEvent('LNS_Fuel:depositMoney', function(stationId, amount)
     local src = source
     if type(stationId) ~= "string" then return end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to deposit money into station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local validatedAmount = validateInteger(amount)
     if not validatedAmount or validatedAmount <= 0 then return end
@@ -381,6 +451,10 @@ RegisterNetEvent('LNS_Fuel:setPrice', function(stationId, price)
     local src = source
     if type(stationId) ~= "string" then return end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to set price for station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local validatedPrice = validateInteger(price)
     if not validatedPrice then return end
@@ -397,6 +471,34 @@ RegisterNetEvent('LNS_Fuel:setPrice', function(stationId, price)
     syncStation(stationId)
 
     lib.logger(src, 'Station Price Change', ('Set fuel price to $%d at station %s'):format(validatedPrice, stationId), ('stationId:%s'):format(stationId), ('price:$%d'):format(validatedPrice))
+
+    TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_price_set_success'):format(validatedPrice) })
+end)
+
+RegisterNetEvent('LNS_Fuel:setElectricPrice', function(stationId, electricPrice)
+    local src = source
+    if type(stationId) ~= "string" then return end
+    if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to set electric price for station %s too far away!"):format(src, stationId))
+        return
+    end
+
+    local validatedPrice = validateInteger(electricPrice)
+    if not validatedPrice then return end
+    
+    local minPrice = Settings.ownership.minElectricPriceTick or 1
+    local maxPrice = Settings.ownership.maxElectricPriceTick or 10
+
+    if validatedPrice < minPrice or validatedPrice > maxPrice then
+        return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_price_range'):format(minPrice, maxPrice) })
+    end
+
+    ownedStations[stationId].electricPrice = validatedPrice
+    saveStation(stationId)
+    syncStation(stationId)
+
+    lib.logger(src, 'Station Electric Price Change', ('Set electric price to $%d at station %s'):format(validatedPrice, stationId), ('stationId:%s'):format(stationId), ('electricPrice:$%d'):format(validatedPrice))
 
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_price_set_success'):format(validatedPrice) })
 end)
@@ -419,6 +521,11 @@ RegisterNetEvent('LNS_Fuel:orderStock', function(stationId, orderIndex, isAuto)
         end
     end
     if not allowed then return end
+
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to order stock for station %s too far away!"):format(src, stationId))
+        return
+    end
 
     if activeDeliveries[stationId] or station.activeDelivery then
         return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_delivery_in_progress') })
@@ -661,6 +768,10 @@ RegisterNetEvent('LNS_Fuel:buyUpgrade', function(stationId, upgradeType)
         return
     end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to buy upgrade for station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local station = ownedStations[stationId]
     local upgradeConf = Settings.ownership.upgrades[upgradeType]
@@ -701,6 +812,10 @@ RegisterNetEvent('LNS_Fuel:sellStation', function(stationId)
     local src = source
     if type(stationId) ~= "string" then return end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to sell station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local station = ownedStations[stationId]
     ownedStations[stationId] = nil
@@ -729,9 +844,122 @@ RegisterNetEvent('LNS_Fuel:sellStation', function(stationId)
 
     exports.ox_inventory:AddItem(src, 'money', totalRefund)
 
-    lib.logger(src, 'Station Sold', ('Sold station %s for a total refund of $%d'):format(stationId, totalRefund), ('stationId:%s'):format(stationId), ('refund:$%d'):format(totalRefund))
+    lib.logger(src, 'Station Sold', ('Sold station %s for a total refund of $%d'):format(totalRefund, totalRefund), ('stationId:%s'):format(stationId), ('refund:$%d'):format(totalRefund))
 
     TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = locale('notify_station_sold'):format(totalRefund) })
+end)
+
+RegisterNetEvent('LNS_Fuel:addCharger', function(stationId, coords, heading)
+    local src = source
+    if type(stationId) ~= "string" or type(coords) ~= "vector3" or type(heading) ~= "number" then
+        return
+    end
+
+    local plyId = getPlayerIdentifier(src)
+    local station = ownedStations[stationId]
+    if not station or station.pending then return end
+
+    local allowed = (station.owner == plyId)
+    if not allowed and station.employees then
+        for _, emp in ipairs(station.employees) do
+            if emp.identifier == plyId then
+                allowed = true
+                break
+            end
+        end
+    end
+    if not allowed then return end
+
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to add charger to station %s too far away!"):format(src, stationId))
+        return
+    end
+
+    local currentLvl = station.upgrades.chargerLimit or 0
+    local maxLimit = 2
+    if currentLvl > 0 then
+        local upgradeConf = Settings.ownership.upgrades.chargerLimit
+        if upgradeConf and upgradeConf.levels[currentLvl] then
+            maxLimit = upgradeConf.levels[currentLvl].value
+        end
+    end
+
+    if not station.electric_chargers then
+        station.electric_chargers = {}
+    end
+
+    if #station.electric_chargers >= maxLimit then
+        return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "You have reached your power grid capacity limit!" })
+    end
+
+    local idx = GetStationIndex(stationId)
+    if not idx then return end
+    local stationConf = Settings.Stations[idx]
+    local center = stationConf.management or stationConf.blip
+    local maxRange = Settings.ownership.chargerPlacementRange or 35.0
+
+    if #(coords - center) > maxRange then
+        return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "Charger placed outside of the station's zone!" })
+    end
+
+    local price = Settings.ownership.chargerPrice or 5000
+    if station.balance < price then
+        return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "Insufficient funds in the business vault!" })
+    end
+
+    station.balance = station.balance - price
+    table.insert(station.electric_chargers, { coords = coords, heading = heading })
+    station.electricPumpsCount = #station.electric_chargers
+    station.hasElectric = true
+
+    saveStation(stationId)
+    syncStation(stationId)
+
+    lib.logger(src, 'Station Charger Purchased', ('Purchased and placed electric charger at station %s for $%d'):format(stationId, price), ('stationId:%s'):format(stationId), ('cost:$%d'):format(price))
+
+    TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = "Electric charger deployed successfully!" })
+end)
+
+RegisterNetEvent('LNS_Fuel:removeCharger', function(stationId, chargerIndex)
+    local src = source
+    if type(stationId) ~= "string" or type(chargerIndex) ~= "number" then
+        return
+    end
+
+    local plyId = getPlayerIdentifier(src)
+    local station = ownedStations[stationId]
+    if not station or not station.electric_chargers or station.pending then return end
+
+    local allowed = (station.owner == plyId)
+    if not allowed and station.employees then
+        for _, emp in ipairs(station.employees) do
+            if emp.identifier == plyId then
+                allowed = true
+                break
+            end
+        end
+    end
+    if not allowed then return end
+
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to remove charger from station %s too far away!"):format(src, stationId))
+        return
+    end
+
+    local index = math.floor(chargerIndex)
+    if index < 1 or index > #station.electric_chargers then
+        return
+    end
+
+    table.remove(station.electric_chargers, index)
+    station.electricPumpsCount = #station.electric_chargers
+
+    saveStation(stationId)
+    syncStation(stationId)
+
+    lib.logger(src, 'Station Charger Removed', ('Dismantled electric charger #%d at station %s'):format(index, stationId), ('stationId:%s'):format(stationId), ('index:%d'):format(index))
+
+    TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = "Electric charger dismantled." })
 end)
 
 function GetStationAtCoords(coords)
@@ -889,6 +1117,10 @@ RegisterNetEvent('LNS_Fuel:hireEmployee', function(stationId, targetServerId)
     if not validatedTarget then return end
     
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to hire employee for station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local targetPed = GetPlayerPed(validatedTarget)
     if not targetPed or targetPed == 0 then
@@ -943,6 +1175,10 @@ RegisterNetEvent('LNS_Fuel:fireEmployee', function(stationId, employeeIdentifier
     local src = source
     if type(stationId) ~= "string" or type(employeeIdentifier) ~= "string" then return end
     if not isOwner(src, stationId) then return end
+    if not isNearStationManagement(src, stationId, 20.0) then
+        reportSecurityCheck(src, ("[Security Check] Player %s attempted to fire employee from station %s too far away!"):format(src, stationId))
+        return
+    end
 
     local station = ownedStations[stationId]
     if not station or not station.employees or station.pending then return end

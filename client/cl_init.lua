@@ -2,6 +2,23 @@ local Settings = lib.load('shared.settings')
 
 if not Settings then return end
 
+function isVehicleElectric(veh)
+    if not DoesEntityExist(veh) then return false end
+    local modelHash = GetEntityModel(veh)
+    if Settings.electricVehicles then
+        if Settings.electricVehicles[modelHash] then
+            return true
+        end
+        for modelKey, _ in pairs(Settings.electricVehicles) do
+            if type(modelKey) == "string" and GetHashKey(modelKey) == modelHash then
+                return true
+            end
+        end
+    end
+    return false
+end
+exports('isVehicleElectric', isVehicleElectric)
+
 local function GetVehicleFuelConsumptionRate(veh)
     if not DoesEntityExist(veh) then return Settings.globalFuelConsumptionRate or 10.0 end
 
@@ -26,7 +43,7 @@ local function GetVehicleFuelConsumptionRate(veh)
 end
 
 SetFuelConsumptionState(true)
-local startVeh = GetVehiclePedIsIn(PlayerPedId(), false)
+local startVeh = GetVehiclePedIsIn(cache.ped, false)
 SetFuelConsumptionRateMultiplier(startVeh ~= 0 and GetVehicleFuelConsumptionRate(startVeh) or Settings.globalFuelConsumptionRate)
 
 AddTextEntry('lns_fuel_station', locale('fuel_station_blip'))
@@ -37,11 +54,12 @@ local fuelMod  = require('client.cl_fuel')
 
 require('client.cl_stations')
 require('client.cl_delivery')
+require('client.cl_electric')
 
 local function handleVehicleDriving()
     local veh = cache.vehicle
 
-    if not DoesVehicleUseFuel(veh) then return end
+    if not veh or veh == 0 or not DoesEntityExist(veh) or not DoesVehicleUseFuel(veh) then return end
 
     local vehStateBag = Entity(veh).state
 
@@ -100,7 +118,7 @@ lib.onCache('seat', function(newSeat)
 end)
 
 RegisterNetEvent('LNS_Fuel:setFuel', function(amt)
-    local ped = PlayerPedId()
+    local ped = cache.ped
     local veh = GetVehiclePedIsIn(ped, false)
     
     if veh and veh ~= 0 then

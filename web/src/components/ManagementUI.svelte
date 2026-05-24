@@ -8,6 +8,7 @@
   /** @type {any} */
   let depositAmount = $state("");
   let priceValue = $state(5);
+  let electricPriceValue = $state(2);
   /** @type {any} */
   let hireServerId = $state("");
 
@@ -15,6 +16,7 @@
     if (station) {
       renameInput = station.name ?? "";
       priceValue = station.price ?? 5;
+      electricPriceValue = station.electricPrice ?? 2;
     }
   });
 
@@ -82,8 +84,20 @@
     });
   }
 
+  function updateElectricPrice() {
+    fetch(`https://LNS_Fuel/setElectricPrice`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stationId: station.id,
+        electricPrice: electricPriceValue,
+      }),
+    });
+  }
+
   let timeLeft = $state(0);
 
+  /** @param {number} seconds */
   function formatTime(seconds) {
     if (seconds <= 0) return "00:00";
     const m = Math.floor(seconds / 60);
@@ -294,9 +308,18 @@
               >{t("mgt_fuel_retail_price", "Fuel Retail Price")}</span
             >
             <span class="stat-value">${station.price}/L</span>
-            <span class="stat-desc"
-              >{t("mgt_market_average", "Market average: $5")}</span
-            >
+            {#if station.hasElectric}
+              <span
+                class="stat-desc"
+                style="color: var(--color-primary); font-weight: 600; margin-top: 4px;"
+              >
+                Electric: ${station.electricPrice}/kWh
+              </span>
+            {:else}
+              <span class="stat-desc"
+                >{t("mgt_market_average", "Market average: $5")}</span
+              >
+            {/if}
           </div>
         </div>
 
@@ -603,6 +626,61 @@
                   </div>
                 </div>
               </div>
+
+              {#if station.hasElectric}
+                <div
+                  style="border-top: 1px solid var(--border-color); margin-top: 12px; padding-top: 20px;"
+                >
+                  <h3 class="panel-title">
+                    {t(
+                      "mgt_electric_pricing_title",
+                      "Electric Charging Pricing",
+                    )}
+                  </h3>
+                  <p
+                    style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;"
+                  >
+                    {t(
+                      "mgt_electric_pricing_desc",
+                      "Adjust the electricity price per kWh paid by players. Charging electric vehicles is typically cheaper than fueling.",
+                    )}
+                  </p>
+                  <div class="pricing-container">
+                    <div class="price-display">
+                      <span class="price-val">${electricPriceValue}</span>
+                      <span style="color: var(--text-muted); font-size: 1.2rem;"
+                        >/ kWh</span
+                      >
+                    </div>
+                    <div class="slider-wrapper">
+                      <input
+                        type="range"
+                        class="price-slider"
+                        min={config.minElectricPrice ?? 1}
+                        max={config.maxElectricPrice ?? 10}
+                        bind:value={electricPriceValue}
+                        onchange={updateElectricPrice}
+                      />
+                      <div class="slider-limits">
+                        <span
+                          >{t(
+                            "mgt_electric_pricing_min",
+                            "Min: $%s",
+                            config.minElectricPrice ?? 1,
+                          )}</span
+                        >
+                        <span
+                          >{t(
+                            "mgt_electric_pricing_max",
+                            "Max: $%s",
+                            config.maxElectricPrice ?? 10,
+                          )}</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/if}
             </div>
           {/if}
 
@@ -613,6 +691,14 @@
             <div
               style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;"
             >
+              {#if station.hasElectric}
+                <h4
+                  style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-primary); letter-spacing: 1px; font-weight: 600; margin-bottom: 2px;"
+                >
+                  {t("mgt_fuel_logistics", "Fuel Logistics")}
+                </h4>
+              {/if}
+
               <div class="stock-row">
                 <span>{t("mgt_active_stock", "Active Stock")}</span>
                 <span style="color: var(--color-primary);"
@@ -639,9 +725,140 @@
                   >{getShippingDiscountPercent()}</span
                 >
               </div>
+
+              {#if station.hasElectric}
+                <h4
+                  style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-primary); letter-spacing: 1px; font-weight: 600; margin-top: 16px; margin-bottom: 2px;"
+                >
+                  {t("mgt_electric_logistics", "Grid & Charging")}
+                </h4>
+                <div class="stock-row">
+                  <span>{t("mgt_chargers_online", "Chargers Online")}</span>
+                  <span style="color: var(--color-success);">
+                    {station.electric_chargers?.length || 0}
+                    {t("mgt_active", "Active")}
+                  </span>
+                </div>
+                <div class="stock-row">
+                  <span>{t("mgt_power_grid", "Power Grid")}</span>
+                  <span
+                    style="color: var(--color-success); font-family: var(--font-mono);"
+                    >{t("mgt_grid_stable", "Stable")}</span
+                  >
+                </div>
+                <div class="stock-row">
+                  <span>{t("mgt_charge_rate", "Avg. Charge Rate")}</span>
+                  <span>{t("mgt_kw_limit", "150 kW")}</span>
+                </div>
+              {/if}
             </div>
           </div>
         </div>
+
+        {#if station.role === "owner"}
+          {@const maxChargers = (() => {
+            const upgradeLvl = station.upgrades?.chargerLimit || 0;
+            if (upgradeLvl === 0) return 2;
+            const upgradeConf = config.upgrades?.chargerLimit;
+            return upgradeConf?.levels[upgradeLvl - 1]?.value || 2;
+          })()}
+
+          {@const currentChargersCount = station.electric_chargers?.length || 0}
+
+          <div class="panel-card" style="margin-top: 15px;">
+            <h3 class="panel-title">
+              {t("mgt_chargers_title", "Electric Chargers Management")}
+            </h3>
+            <p
+              style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;"
+            >
+              {t(
+                "mgt_chargers_desc",
+                "Configure and deploy EV charging docks. Customers will pay your custom electricity rate per kWh.",
+              )}
+            </p>
+
+            <div
+              style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid var(--border-color);"
+            >
+              <div>
+                <span style="font-size: 0.85rem; color: var(--text-muted);"
+                  >{t("mgt_chargers_count_label", "Grid Capacity:")}</span
+                >
+                <strong style="margin-left: 5px; color: #fff;"
+                  >{currentChargersCount} / {maxChargers}
+                  {t("mgt_chargers_suffix", "Chargers Placed")}</strong
+                >
+              </div>
+              <button
+                class="primary-btn deploy-charger-btn"
+                onclick={() => {
+                  closeUI();
+                  fetch(`https://LNS_Fuel/startPlacementMode`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ stationId: station.id }),
+                  });
+                }}
+                disabled={currentChargersCount >= maxChargers ||
+                  station.balance < (config.chargerPrice || 5000)}
+              >
+                {t(
+                  "btn_purchase_place",
+                  "Deploy Charger ($%s)",
+                  (config.chargerPrice || 5000).toLocaleString(),
+                )}
+              </button>
+            </div>
+
+            <div class="stock-orders-list">
+              {#if station.electric_chargers && station.electric_chargers.length > 0}
+                {#each station.electric_chargers as charger, i}
+                  <div class="stock-order-row" style="padding: 10px 12px;">
+                    <div class="order-details">
+                      <h4 style="font-size: 0.9rem; margin: 0; color: #fff;">
+                        {t("charger_label", "Charging Dock #%s", i + 1)}
+                      </h4>
+                      <p
+                        style="font-size: 0.75rem; margin: 2px 0 0 0; color: var(--text-muted);"
+                      >
+                        X: {charger.coords.x.toFixed(2)}, Y: {charger.coords.y.toFixed(
+                          2,
+                        )}, Z: {charger.coords.z.toFixed(2)}
+                      </p>
+                    </div>
+                    <div class="order-actions">
+                      <button
+                        class="primary-btn dismantle-btn"
+                        onclick={() => {
+                          fetch(`https://LNS_Fuel/removeCharger`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              stationId: station.id,
+                              chargerIndex: i + 1,
+                            }),
+                          });
+                        }}
+                      >
+                        {t("btn_remove_charger", "Dismantle")}
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <p
+                  style="color: var(--text-muted); font-size: 0.85rem; padding: 15px 0; text-align: center; background: rgba(0,0,0,0.1); border-radius: 6px; margin: 0;"
+                >
+                  {t(
+                    "mgt_no_chargers",
+                    "No EV chargers placed at this station yet. Click deploy to start.",
+                  )}
+                </p>
+              {/if}
+            </div>
+          </div>
+        {/if}
 
         <div class="panel-card">
           <h3 class="panel-title">
@@ -931,6 +1148,75 @@
                     class="upgrade-btn"
                     onclick={() => buyUpgrade("hiredDriver")}
                     disabled={station.balance < nextHdData.price}
+                  >
+                    {t("btn_upgrade", "Upgrade")}
+                  </button>
+                {:else}
+                  <span
+                    class="upgrade-cost"
+                    style="color: var(--color-success);"
+                    >{t("mgt_max_level", "MAX LEVEL")}</span
+                  >
+                  <button class="upgrade-btn maxed" disabled
+                    >{t("btn_completed", "Completed")}</button
+                  >
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          {#if config.upgrades?.chargerLimit}
+            {@const clLvl = station.upgrades?.chargerLimit || 0}
+            {@const maxClLvl = config.upgrades.chargerLimit.levels?.length || 0}
+            {@const nextClData =
+              clLvl < maxClLvl
+                ? config.upgrades.chargerLimit.levels[clLvl]
+                : null}
+            <div class="upgrade-card">
+              <div class="upgrade-info">
+                <h3>
+                  {t(
+                    config.upgrades.chargerLimit.title,
+                    config.upgrades.chargerLimit.title,
+                  )}
+                </h3>
+                <p>
+                  {t(
+                    config.upgrades.chargerLimit.description,
+                    config.upgrades.chargerLimit.description,
+                  )}
+                </p>
+                <p style="margin-top: 10px; color: #fff;">
+                  {t(
+                    "mgt_upgrade_current_chargers",
+                    "Current Capacity: %s Chargers",
+                    clLvl > 0
+                      ? config.upgrades.chargerLimit.levels[clLvl - 1].value
+                      : 2,
+                  )}
+                  {#if nextClData}
+                    {" "}{t(
+                      "mgt_upgrade_next_chargers",
+                      "➔ Next: %s Chargers",
+                      nextClData.value,
+                    )}
+                  {/if}
+                </p>
+                <div class="upgrade-level-indicator">
+                  {#each Array(maxClLvl) as _, i}
+                    <div class="level-dot" class:active={i < clLvl}></div>
+                  {/each}
+                </div>
+              </div>
+              <div class="upgrade-action">
+                {#if nextClData}
+                  <span class="upgrade-cost"
+                    >${nextClData.price.toLocaleString()}</span
+                  >
+                  <button
+                    class="upgrade-btn"
+                    onclick={() => buyUpgrade("chargerLimit")}
+                    disabled={station.balance < nextClData.price}
                   >
                     {t("btn_upgrade", "Upgrade")}
                   </button>

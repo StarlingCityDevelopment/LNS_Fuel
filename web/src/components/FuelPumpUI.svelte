@@ -24,6 +24,7 @@
     }
   });
 
+  let unit = $derived(pumpData?.isElectric ? "kWh" : "L");
   let maxFuelToPump = $derived(pumpData ? 100 - pumpData.currentFuel : 0);
   let maxAffordableLiters = $derived(
     pumpData ? Math.floor(pumpData.playerMoney / pumpData.pricePerLiter) : 0,
@@ -73,14 +74,14 @@
   <header class="pump-header">
     <div class="brand-section">
       <div class="brand-icon">
-        <i class="fa-solid fa-gas-pump"></i>
+        <i class="fa-solid {pumpData.isElectric ? 'fa-bolt' : 'fa-gas-pump'}"></i>
       </div>
       <div class="brand-details">
         <h2>{pumpData.stationName}</h2>
       </div>
     </div>
     <div class="pump-price-badge">
-      ${pumpData.pricePerLiter.toFixed(2)}/L
+      ${pumpData.pricePerLiter.toFixed(2)}/{unit}
     </div>
   </header>
 
@@ -138,25 +139,25 @@
             class="preset-chip"
             onclick={() => selectPresetLiters(10)}
             disabled={maxAllowedLiters <= 0 ||
-              customLiters + 10 > maxAllowedLiters}>+10L</button
+              customLiters + 10 > maxAllowedLiters}>+10 {unit}</button
           >
           <button
             class="preset-chip"
             onclick={() => selectPresetLiters(20)}
             disabled={maxAllowedLiters <= 0 ||
-              customLiters + 20 > maxAllowedLiters}>+20L</button
+              customLiters + 20 > maxAllowedLiters}>+20 {unit}</button
           >
           <button
             class="preset-chip"
             onclick={() => selectPresetLiters(50)}
             disabled={maxAllowedLiters <= 0 ||
-              customLiters + 50 > maxAllowedLiters}>+50L</button
+              customLiters + 50 > maxAllowedLiters}>+50 {unit}</button
           >
           <button
             class="preset-chip primary"
             onclick={() => setPresetLiters("full")}
             disabled={maxAllowedLiters <= 0 || customLiters >= maxAllowedLiters}
-            >{t("pump_full_tank", "Full Tank")}</button
+            >{pumpData.isElectric ? t("pump_full_charge", "Full Charge") : t("pump_full_tank", "Full Tank")}</button
           >
         </div>
       </div>
@@ -198,7 +199,7 @@
           <span class="section-label"
             >{t("pump_custom_liters", "Custom Liters")}</span
           >
-          <span class="slider-count-badge">{customLiters} L</span>
+          <span class="slider-count-badge">{customLiters} {unit}</span>
         </div>
         {#if maxAllowedLiters > 0}
           <input
@@ -233,11 +234,11 @@
       <div class="invoice-box">
         <div class="invoice-row">
           <span>{t("pump_unit_price", "Unit Price")}</span>
-          <span>${pumpData.pricePerLiter.toFixed(2)}/L</span>
+          <span>${pumpData.pricePerLiter.toFixed(2)}/{unit}</span>
         </div>
         <div class="invoice-row">
           <span>{t("pump_volume_to_pump", "Volume to Pump")}</span>
-          <span>{t("mgt_liters", "%s Liters", customLiters)}</span>
+          <span>{pumpData.isElectric ? t("mgt_electricity", "%s kWh", customLiters) : t("mgt_liters", "%s Liters", customLiters)}</span>
         </div>
         <div class="invoice-row">
           <span>{t("pump_total_cost", "Total Cost")}</span>

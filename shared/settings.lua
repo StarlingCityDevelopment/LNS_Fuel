@@ -31,6 +31,9 @@ return {
     -- Price charged to the player every refill tick
     priceTick = 5,
 
+    -- Price charged to the player every electric charging tick (public stations)
+    electricPriceTick = 2,
+
     -- Degradation amount applied to the jerry can per tick
     durabilityTick = 1.3,
 
@@ -77,6 +80,38 @@ return {
         `prop_gas_pump_1d`,
     },
 
+    -- List of recognized electric charging station pump models
+    electricPumpModels = {
+        `electric_charger`,
+    },
+
+    -- Physics-based hose/cable settings
+    pumpHose = true,
+    nozzleLength = 7.5,
+    ropeType = {
+        fuel = 3,       -- 3: Very Thick Black Rope
+        electric = 4,   -- 4: Very Thin Black Rope
+    },
+
+    -- List of electric vehicles (key is model name in lowercase, value is true)
+    electricVehicles = {
+        ['tesla'] = true,
+        ['neon'] = true,
+        ['raiden'] = true,
+        ['cyclone'] = true,
+        ['tezeract'] = true,
+        ['imorgon'] = true,
+        ['voltic'] = true,
+        ['surge'] = true,
+        ['dilettante'] = true,
+        ['khamelion'] = true,
+        ['iwagen'] = true,
+        ['omnisegt'] = true,
+        ['virtue'] = true,
+        ['buffalo4'] = true,
+        ['corsita'] = true,
+    },
+
 	-- UI Accent Colors
 	theme = {
         primary = '#6fd2f3',    -- Light Blue accent color
@@ -91,7 +126,12 @@ return {
         stationsPerPlayer = 1,         -- Maximum number of stations a single player can own (0 = unlimited)
         minPriceTick = 1,              -- Minimum fuel price tick owners can set
         maxPriceTick = 25,             -- Maximum fuel price tick owners can set
-        defaultCapacity = 2000,        -- Starting stock capacity
+        minElectricPriceTick = 1,      -- Minimum electric price tick owners can set
+        maxElectricPriceTick = 10,     -- Maximum electric price tick owners can set
+        defaultElectricPrice = 2,      -- Default electric price tick
+        defaultCapacity = 2000,
+        chargerPrice = 5000,
+        chargerPlacementRange = 35.0,
         
         -- Fuel Stock delivery orders
         stockOrders = {
@@ -128,6 +168,15 @@ return {
                     { level = 1, value = 600, price = 15000 }, -- Level 1: 10 mins (600 seconds)
                     { level = 2, value = 420, price = 25000 }, -- Level 2: 7 mins (420 seconds)
                     { level = 3, value = 300, price = 40000 }, -- Level 3: 5 mins (300 seconds)
+                }
+            },
+            chargerLimit = {
+                title = "Power Grid Expansion",
+                description = "Expand your station's power grid to allow placing more electric chargers.",
+                levels = {
+                    { level = 1, value = 3, price = 10000 },
+                    { level = 2, value = 4, price = 20000 },
+                    { level = 3, value = 6, price = 35000 },
                 }
             }
         },
@@ -497,5 +546,15 @@ return {
 				vec3(-91.29045104980469, 6422.537109375, 30.64349365234375)
 			}
 		},
+
+		{
+			blip = vec3(-326.77, -938.38, 30.61),
+			cantBeOwned = true,
+			electricpumps = {
+				vec4(-322.6, -936.04, 30.08, 342.13),
+				vec4(-323.89, -939.51, 30.08, 342.67),
+				vec4(-325.14, -943.0, 30.08, 349.69)
+			}
+		}
 	}
 }

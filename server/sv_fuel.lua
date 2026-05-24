@@ -54,12 +54,39 @@ local function isNearAnyPump(playerCoords, maxDistance)
     if not Settings or not Settings.Stations then return false end
     for i = 1, #Settings.Stations do
         local station = Settings.Stations[i]
-        for _, pump in ipairs(station.pumps) do
-            if #(playerCoords - pump) < maxDistance then
-                return true
+        if station.pumps then
+            for _, pump in ipairs(station.pumps) do
+                if #(playerCoords - pump) < maxDistance then
+                    return true
+                end
+            end
+        end
+        local electricPumps = station.electricpumps or station.electricPumps
+        if electricPumps then
+            for _, pump in ipairs(electricPumps) do
+                local coords = type(pump) == "table" and pump.coords or pump
+                local vec3Coords = type(coords) == "vector4" and vec3(coords.x, coords.y, coords.z) or coords
+                if #(playerCoords - vec3Coords) < maxDistance then
+                    return true
+                end
             end
         end
     end
+
+    if ownedStations then
+        for _, station in pairs(ownedStations) do
+            if station.electric_chargers then
+                for _, pump in ipairs(station.electric_chargers) do
+                    local coords = type(pump) == "table" and pump.coords or pump
+                    local vec3Coords = type(coords) == "vector4" and vec3(coords.x, coords.y, coords.z) or coords
+                    if #(playerCoords - vec3Coords) < maxDistance then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
     return false
 end
 
@@ -83,6 +110,22 @@ local processPayment = handleDefaultPayment
 exports('setPaymentMethod', function(customFunc)
     processPayment = customFunc or handleDefaultPayment
 end)
+
+local function isVehicleElectric(veh)
+    if not DoesEntityExist(veh) then return false end
+    local modelHash = GetEntityModel(veh)
+    if Settings.electricVehicles then
+        if Settings.electricVehicles[modelHash] then
+            return true
+        end
+        for modelKey, _ in pairs(Settings.electricVehicles) do
+            if type(modelKey) == "string" and GetHashKey(modelKey) == modelHash then
+                return true
+            end
+        end
+    end
+    return false
+end
 
 RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, litersFueled)
     local src = source
@@ -148,13 +191,20 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
             reportSecurityCheck(src, ("[Security Check] Player %s attempted free refuel! Liters Fueled: %s, Actual Fuel Delta: %0.2f (Server: %0.2f, Client Target: %s)"):format(
                 src, litersFueled, fuelDelta, currentServerFuel, currentFuel
             ))
+
             return
         end
     end
 
-    local expectedPrice = Settings.priceTick / Settings.refillValue
+    local isElectric = isVehicleElectric(vehicle)
+
+    local expectedPrice = isElectric and ((Settings.electricPriceTick or 2) / Settings.refillValue) or (Settings.priceTick / Settings.refillValue)
     if stationId and ownedStations and ownedStations[stationId] then
-        expectedPrice = ownedStations[stationId].price
+        if isElectric then
+            expectedPrice = ownedStations[stationId].electricPrice or 2
+        else
+            expectedPrice = ownedStations[stationId].price
+        end
     end
 
     local expectedCost = math.ceil(litersFueled * expectedPrice)
@@ -165,21 +215,25 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
     
     if stationId and ownedStations and ownedStations[stationId] then
         local station = ownedStations[stationId]
-        local fuelToDeduct = math.ceil(litersFueled or 0)
+        local fuelToDeduct = isElectric and 0 or math.ceil(litersFueled or 0)
         
-        if station.stock < fuelToDeduct then
-            fuelToDeduct = station.stock
-        end
+        if not isElectric then
+            if station.stock < fuelToDeduct then
+                fuelToDeduct = station.stock
+            end
 
-        if fuelToDeduct <= 0 and litersFueled and litersFueled > 0 then
-            return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_station_out_of_fuel') })
+            if fuelToDeduct <= 0 and litersFueled and litersFueled > 0 then
+                return TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = locale('notify_station_out_of_fuel') })
+            end
         end
 
         if not processPayment(src, cost) then return end
 
-        station.stock = math.max(0, station.stock - fuelToDeduct)
+        if not isElectric then
+            station.stock = math.max(0, station.stock - fuelToDeduct)
+            station.statistics.totalSales = (station.statistics.totalSales or 0) + fuelToDeduct
+        end
         station.balance = station.balance + cost
-        station.statistics.totalSales = (station.statistics.totalSales or 0) + fuelToDeduct
         station.statistics.totalRevenue = (station.statistics.totalRevenue or 0) + cost
         station.statistics.lifetimeClients = (station.statistics.lifetimeClients or 0) + 1
 
@@ -194,11 +248,13 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
         currentFuel = math.floor(currentFuel)
         applyFuelLevel(validatedNId, currentFuel)
 
-        lib.logger(src, 'Fuel Purchase', ('Fueled vehicle (netId: %d) with %0.2f liters for $%d at owned station %s. New fuel level: %d%%'):format(validatedNId, litersFueled, cost, stationId, currentFuel), ('stationId:%s'):format(stationId), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
+        local actionWord = isElectric and 'Charged' or 'Fueled'
+        local unitWord = isElectric and 'kWh' or 'liters'
+        lib.logger(src, 'Fuel Purchase', ('%s vehicle (netId: %d) with %0.2f %s for $%d at owned station %s. New charge level: %d%%'):format(actionWord, validatedNId, litersFueled, unitWord, cost, stationId, currentFuel), ('stationId:%s'):format(stationId), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
 
         TriggerClientEvent('ox_lib:notify', src, {
             type = 'success',
-            description = locale('fuel_success', currentFuel, cost)
+            description = isElectric and ("Charged to %s%% - $%s"):format(currentFuel, cost) or locale('fuel_success', currentFuel, cost)
         })
         return
     end
@@ -208,11 +264,13 @@ RegisterNetEvent('LNS_Fuel:pay', function(cost, currentFuel, nId, stationId, lit
     currentFuel = math.floor(currentFuel)
     applyFuelLevel(validatedNId, currentFuel)
 
-    lib.logger(src, 'Fuel Purchase', ('Fueled vehicle (netId: %d) with %0.2f liters for $%d at standard station. New fuel level: %d%%'):format(validatedNId, litersFueled, cost, currentFuel), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
+    local actionWord = isElectric and 'Charged' or 'Fueled'
+    local unitWord = isElectric and 'kWh' or 'liters'
+    lib.logger(src, 'Fuel Purchase', ('%s vehicle (netId: %d) with %0.2f %s for $%d at standard station. New charge level: %d%%'):format(actionWord, validatedNId, litersFueled, unitWord, cost, currentFuel), ('netId:%d'):format(validatedNId), ('liters:%0.2f'):format(litersFueled), ('cost:$%d'):format(cost))
 
     TriggerClientEvent('ox_lib:notify', src, {
         type = 'success',
-        description = locale('fuel_success', currentFuel, cost)
+        description = isElectric and ("Charged to %s%% - $%s"):format(currentFuel, cost) or locale('fuel_success', currentFuel, cost)
     })
 end)
 

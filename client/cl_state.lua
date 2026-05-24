@@ -1,6 +1,8 @@
 local currentState = {}
 
 currentState.isFueling = false
+currentState.holdingNozzle = false
+currentState.holdingElectricNozzle = false
 currentState.lastVehicle = cache.vehicle or GetPlayersLastVehicle()
 
 if currentState.lastVehicle == 0 then 

@@ -1,7 +1,7 @@
 <div align="center">
   <h1>LNS Fuel</h1>
 
-  [![Version](https://img.shields.io/badge/Version-1.0.1-6fd2f3?style=for-the-badge)](https://github.com/LumaNodeStudios/LNS_Fuel)
+  [![Version](https://img.shields.io/badge/Version-1.0.2-6fd2f3?style=for-the-badge)](https://github.com/LumaNodeStudios/LNS_Fuel)
   [![Frameworks](https://img.shields.io/badge/Frameworks-ESX%20%7C%20QBCore-6fd2f3?style=for-the-badge)](#-framework-compatibility)
   [![Author](https://img.shields.io/badge/Author-LumaNode%20Studios-6fd2f3?style=for-the-badge)](https://github.com/LumaNodeStudios)
   [![License](https://img.shields.io/badge/License-GPL--3.0-6fd2f3?style=for-the-badge)](LICENSE)
@@ -182,6 +182,8 @@ end)
 ## Credits & Acknowledgements
 
 **LNS Fuel** is built upon and heavily modifies the core foundation of **[ox_fuel](https://github.com/overextended/ox_fuel)** by the **[Overextended](https://github.com/overextended)** team. We express our utmost gratitude to them for providing a highly optimized open-source base that allowed us to build this script.
+
+**LNS Fuel** uses **[cdn-fuel](https://github.com/CodineDev/cdn-fuel)** for the **electric nozzle** and **[cdn-fuel](https://github.com/CodineDev/cdn-fuel)** for the **electric charger**.
 
 ---
 

@@ -4,14 +4,14 @@ lua54 'yes'
 
 author 'LumaNode Studios'
 description 'LumaNode Studios Fuel Management System'
-version '1.0.1'
+version '1.0.2'
 
 ui_page 'web/dist/index.html'
 
 files {
 	'locales/*.json',
 	'client/*.lua',
-	'web/dist/**',
+	'web/dist/**'
 }
 
 shared_scripts {
@@ -28,6 +28,9 @@ server_scripts {
 	'server/sv_fuel.lua',
 	'server/sv_ownership.lua'
 }
+
+data_file 'DLC_ITYP_REQUEST' 'stream/[electric_nozzle]/electric_nozzle_typ.ytyp'
+data_file 'DLC_ITYP_REQUEST' 'stream/[electric_charger]/electric_charger_typ.ytyp'
 
 ox_libs {
 	'math',
