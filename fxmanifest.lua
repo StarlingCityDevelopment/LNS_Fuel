@@ -4,7 +4,7 @@ lua54 'yes'
 
 author 'LumaNode Studios'
 description 'LumaNode Studios Fuel Management System'
-version '1.0.3'
+version '1.0.4'
 
 ui_page 'web/dist/index.html'
 
